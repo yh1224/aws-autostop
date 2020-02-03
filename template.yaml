@@ -12,7 +12,7 @@ Parameters:
     Default: ""
 
 Resources:
-  IamRole:
+  CheckRdsIamRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -25,7 +25,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: "CustomPolicy"
+        - PolicyName: "CheckRdsPolicy"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -39,9 +39,9 @@ Resources:
                 Action:
                   - sns:Publish
                 Resource:
-                  Ref: Topic
+                  Ref: CheckRdsTopic
 
-  Function:
+  CheckRdsFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
@@ -49,13 +49,13 @@ Resources:
       Runtime: python3.8
       Environment:
         Variables:
-          NOTIFY_ARN: !Ref Topic
-      Role: !GetAtt IamRole.Arn
+          NOTIFY_ARN: !Ref CheckRdsTopic
+      Role: !GetAtt CheckRdsIamRole.Arn
       Events:
         Notify:
           Type: Schedule
           Properties:
             Schedule: cron(0 * * * ? *) # every hour
 
-  Topic:
+  CheckRdsTopic:
     Type: AWS::SNS::Topic
