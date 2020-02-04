@@ -30,7 +30,7 @@ def lambda_handler(event, context):
             # Start cluster on sunday
             messages.append('Starting {}'.format(cluster_identifier))
             rds_client.start_db_cluster(DBClusterIdentifier=cluster_identifier)
-        if dt_now.hour != STOP_ON_HOUR and status == 'available':
+        if dt_now.hour == STOP_ON_HOUR and status == 'available':
             # Stop cluster at 0 am
             messages.append('Stopping {}'.format(cluster_identifier))
             rds_client.stop_db_cluster(DBClusterIdentifier=cluster_identifier)
