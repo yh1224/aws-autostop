@@ -50,6 +50,7 @@ Resources:
       Environment:
         Variables:
           NOTIFY_ARN: !Ref CheckRdsTopic
+          SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
       Role: !GetAtt CheckRdsIamRole.Arn
       Events:
         Notify:
