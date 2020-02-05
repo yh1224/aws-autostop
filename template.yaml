@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Check RDS
+Description: AWS AutoStop
 
 Globals:
   Function:
@@ -9,10 +9,9 @@ Globals:
 Parameters:
   SlackWebhookUrl:
     Type: String
-    Default: ""
 
 Resources:
-  CheckRdsIamRole:
+  AutoStopIamRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -25,12 +24,18 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: "CheckRdsPolicy"
+        - PolicyName: "AutoStopPolicy"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
+                  - "elasticbeanstalk:DescribeEnvironments"
+                  - "elasticbeanstalk:DescribeEnvironmentResources"
+                  - "elasticbeanstalk:UpdateEnvironment"
+                  - "ec2:DescribeInstances"
+                  - "ec2:DescribeInstanceStatus"
+                  - "ec2:StopInstances"
                   - "rds:DescribeDBClusters"
                   - "rds:StartDBCluster"
                   - "rds:StopDBCluster"
@@ -39,9 +44,9 @@ Resources:
                 Action:
                   - sns:Publish
                 Resource:
-                  Ref: CheckRdsTopic
+                  Ref: AutoStopTopic
 
-  CheckRdsFunction:
+  AutoStopFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
@@ -49,14 +54,14 @@ Resources:
       Runtime: python3.8
       Environment:
         Variables:
-          NOTIFY_ARN: !Ref CheckRdsTopic
+          NOTIFY_ARN: !Ref AutoStopTopic
           SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
-      Role: !GetAtt CheckRdsIamRole.Arn
+      Role: !GetAtt AutoStopIamRole.Arn
       Events:
         Notify:
           Type: Schedule
           Properties:
             Schedule: cron(0 * * * ? *) # every hour
 
-  CheckRdsTopic:
+  AutoStopTopic:
     Type: AWS::SNS::Topic
