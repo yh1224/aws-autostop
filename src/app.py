@@ -12,6 +12,7 @@ rds_client = boto3.client('rds')
 eb_client = boto3.client('elasticbeanstalk')
 ec2_client = boto3.client('ec2')
 elbv2_client = boto3.client('elbv2')
+asg_client = boto3.client('autoscaling')
 
 START_TAG = 'start-at'
 STOP_TAG = 'stop-at'
@@ -19,7 +20,8 @@ STOP_TAG = 'stop-at'
 
 def lambda_handler(event, context):
     messages = []
-    result = proc_eb(messages)
+    # result = proc_eb(messages)
+    result = proc_asg(messages)
     result += proc_ec2(messages)
     result += proc_rds(messages)
     if result > 0:
@@ -195,6 +197,46 @@ def proc_eb(messages):
                             'Value': str(new_value)
                         },
                     ])
+            except eb_client.exceptions.ClientError:
+                message += ' ... FAILED'
+
+        messages.append(message)
+
+    return actions
+
+
+def proc_asg(messages):
+    actions = 0
+    response = asg_client.describe_auto_scaling_groups()
+    for asg in response['AutoScalingGroups']:
+        asg_name = asg['AutoScalingGroupName']
+        instance_size = asg['MaxSize']
+        asg_tags = asg['Tags']
+        start_time = next(map(
+            lambda x: x['Value'],
+            filter(lambda x: x['Key'] == START_TAG, asg_tags)
+        ), None)
+        stop_time = next(map(
+            lambda x: x['Value'],
+            filter(lambda x: x['Key'] == STOP_TAG, asg_tags)
+        ), None)
+        message = f'- ASG: {asg_name}'
+
+        new_value = None
+        if stop_time is not None and on_time(stop_time) and instance_size > 0:
+            new_value = 0
+            message += ' => Stopping'
+        elif start_time is not None and on_time(start_time) and instance_size == 0:
+            new_value = 1
+            message += ' => Starting'
+        if new_value is not None:
+            actions += 1
+            try:
+                asg_client.update_auto_scaling_group(
+                    AutoScalingGroupName=asg_name,
+                    MinSize=new_value,
+                    MaxSize=new_value
+                )
             except eb_client.exceptions.ClientError:
                 message += ' ... FAILED'
 

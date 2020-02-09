@@ -37,6 +37,8 @@ Resources:
                   - "ec2:DescribeInstances"
                   - "ec2:DescribeInstanceStatus"
                   - "ec2:StopInstances"
+                  - "autoscaling:DescribeAutoScalingGroups"
+                  - "autoscaling:UpdateAutoScalingGroup"
                   - "rds:DescribeDBClusters"
                   - "rds:ListTagsForResource"
                   - "rds:StartDBCluster"
