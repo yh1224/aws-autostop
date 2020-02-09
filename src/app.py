@@ -5,160 +5,210 @@ from datetime import datetime
 import boto3
 import requests
 
-# Stop on 8pm-6am JST everyday
-STOP_ON_HOUR = range(11, 22)
-
-# Wakeup RDS on sunday 6pm-7pm JST
-WAKEUP_RDS_ON_WEEKDAY = 5
-WAKEUP_RDS_ON_HOUR = range(9, 11)
-
-TOPIC_ARN = os.environ.get('NOTIFY_ARN')
-SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
+NOTIFY_TOPIC_ARN = os.environ['NOTIFY_TOPIC_ARN']
+SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
 
 rds_client = boto3.client('rds')
 eb_client = boto3.client('elasticbeanstalk')
 ec2_client = boto3.client('ec2')
 elbv2_client = boto3.client('elbv2')
 
+START_TAG = 'start-at'
+STOP_TAG = 'stop-at'
+
 
 def lambda_handler(event, context):
-    dt_now = datetime.now()
     messages = []
-    if dt_now.weekday() == WAKEUP_RDS_ON_WEEKDAY and dt_now.hour in WAKEUP_RDS_ON_HOUR:
-        messages = wakeup_rds()
-    if dt_now.hour in STOP_ON_HOUR:
-        messages = stop_eb() + stop_ec2() + stop_rds()
-    if len(messages) > 0:
+    result = proc_eb(messages)
+    result += proc_ec2(messages)
+    result += proc_rds(messages)
+    if result > 0:
         notify('AWS AutoStop', '\n'.join(messages))
 
 
-def wakeup_rds():
-    messages = []
+def on_time(conf):
+    weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+    dt_now = datetime.now()
+
+    if len(conf) > 0:
+        for time in conf.split(','):
+            if ':' in time:
+                (weekday, time) = time.split(':')
+                if weekdays[dt_now.weekday()] != weekday:
+                    continue
+            if '-' in time:
+                (start, end) = time.split('-')
+                if not (int(start) <= dt_now.hour <= int(end)):
+                    continue
+            elif dt_now.hour != int(time):
+                continue
+            # matched
+            return True
+    # unmatched any
+    return False
+
+
+def proc_rds(messages):
+    actions = 0
     response = rds_client.describe_db_clusters()
     for cluster in response['DBClusters']:
         status = cluster['Status']  # stopped, starting, available, stopping
         cluster_identifier = cluster['DBClusterIdentifier']
-        print(f'- RDS: {cluster_identifier} ({status})')
-        if status == 'stopped':
-            # Start cluster
-            message = '- Waking up RDS cluster: {}'.format(cluster_identifier)
-            try:
-                rds_client.start_db_cluster(DBClusterIdentifier=cluster_identifier)
-                messages.append(message)
-            except rds_client.exceptions.ClientError:
-                messages.append(f'{message} ... FAILED')
-    return messages
+        cluster_arn = cluster['DBClusterArn']
+        tags_response = rds_client.list_tags_for_resource(ResourceName=cluster_arn)
+        start_time = next(map(
+            lambda x: x['Value'],
+            filter(lambda x: x['Key'] == START_TAG, tags_response['TagList'])
+        ), None)
+        stop_time = next(map(
+            lambda x: x['Value'],
+            filter(lambda x: x['Key'] == STOP_TAG, tags_response['TagList'])
+        ), None)
+        message = f'- RDS: {cluster_identifier} ({status})'
 
-
-def stop_rds():
-    messages = []
-    response = rds_client.describe_db_clusters()
-    for cluster in response['DBClusters']:
-        status = cluster['Status']  # stopped, starting, available, stopping
-        cluster_identifier = cluster['DBClusterIdentifier']
-        print(f'- RDS: {cluster_identifier} ({status})')
-        if status == 'available':
-            # Stop cluster
-            message = '- Stopping RDS cluster: {}'.format(cluster_identifier)
+        if stop_time is not None and on_time(stop_time) and status == 'available':
+            # Stop RDS clusters
+            actions += 1
+            message += ' => Stopping'
             try:
                 rds_client.stop_db_cluster(DBClusterIdentifier=cluster_identifier)
-                messages.append(message)
             except rds_client.exceptions.ClientError:
-                messages.append(f'{message} ... FAILED')
-    return messages
-
-
-def stop_eb():
-    messages = []
-
-    # EB
-    response = eb_client.describe_environments()
-    for environment in response['Environments']:
-        application_name = environment['ApplicationName']
-        environment_id = environment['EnvironmentId']
-        environment_name = environment['EnvironmentName']
-        print(f'- EB: {application_name} {environment_id} {environment_name}')
-        resources_response = eb_client.describe_environment_resources(EnvironmentId=environment_id)
-        resources = resources_response['EnvironmentResources']
-
-        for load_balancer in resources['LoadBalancers']:
-            load_balancer_name = load_balancer['Name']
+                message += ' ... FAILED'
+        elif start_time is not None and on_time(start_time) and status == 'stopped':
+            # Start RDS clusters
+            actions += 1
+            message += ' => Starting'
             try:
-                lb_response = elbv2_client.describe_load_balancers(Names=[load_balancer_name])
-                lb_state = lb_response['LoadBalancers'][0]['State']['Code']
-                print(f'  - LB: {load_balancer_name} ({lb_state})')
-            except elbv2_client.exceptions.LoadBalancerNotFoundException:
-                # probably Classic Load Balancer
-                print(f'  - LB: {load_balancer_name}')
+                rds_client.start_db_cluster(DBClusterIdentifier=cluster_identifier)
+            except rds_client.exceptions.ClientError:
+                message += ' ... FAILED'
 
-        running_instances = []
-        for instance in resources['Instances']:
-            instance_id = instance['Id']
-            status_response = ec2_client.describe_instance_status(InstanceIds=[instance_id], IncludeAllInstances=True)
-            instance_state = status_response['InstanceStatuses'][0]['InstanceState']['Name']
-            print(f'  - EC2: {instance_id} ({instance_state})')
-            if instance_state == 'running':
-                running_instances.append(instance_id)
+        messages.append(message)
 
-        if len(running_instances) > 0:
-            # Terminate instances
-            message = '- Terminating EC2 instances for EB: {}'.format(', '.join(running_instances))
-            try:
-                eb_client.update_environment(
-                    EnvironmentId=environment_id,
-                    OptionSettings=[
-                        {
-                            # 'ResourceName': 'string',
-                            'Namespace': 'aws:autoscaling:asg',
-                            'OptionName': 'MinSize',
-                            'Value': '0'
-                        },
-                        {
-                            # 'ResourceName': 'string',
-                            'Namespace': 'aws:autoscaling:asg',
-                            'OptionName': 'MaxSize',
-                            'Value': '0'
-                        },
-                    ])
-                messages.append(message)
-            except eb_client.exceptions.ClientError:
-                messages.append(f'{message} ... FAILED')
-
-        return messages
+    return actions
 
 
-def stop_ec2():
-    messages = []
-
-    # EC2
+def proc_ec2(messages):
+    actions = 0
     response = ec2_client.describe_instances()
     for reservation in response['Reservations']:
         for instance in reservation['Instances']:
             instance_id = instance['InstanceId']
             instance_state = instance['State']['Name']
             instance_tags = instance['Tags']
-            if 'elasticbeanstalk:environment-id' in map(lambda x: x['Key'], instance_tags):
-                # Ignore instances for EB
+            if 'aws:autoscaling:groupName' in map(lambda x: x['Key'], instance_tags):
+                # Ignore instances for ASG
+                messages.append(f'- EC2: {instance_id} ({instance_state}) for ASG')
                 continue
-            print(f'- EC2: {instance_id} ({instance_state})')
-            if instance_state == 'running':
-                # Stop instances
-                message = '- Stopping EC2 instance: {}'.format(instance_id)
+            start_time = next(map(
+                lambda x: x['Value'],
+                filter(lambda x: x['Key'] == START_TAG, instance_tags)
+            ), None)
+            stop_time = next(map(
+                lambda x: x['Value'],
+                filter(lambda x: x['Key'] == STOP_TAG, instance_tags)
+            ), None)
+            message = f'- EC2: {instance_id} ({instance_state})'
+
+            if stop_time is not None and on_time(stop_time) and instance_state == 'running':
+                # Stop EC2 instance
+                actions += 1
+                message += ' => Stopping'
                 try:
                     ec2_client.stop_instances(InstanceIds=[instance_id])
-                    messages.append(message)
                 except ec2_client.exceptions.ClientError:
-                    messages.append(f'{message} ... FAILED')
+                    message += ' ... FAILED'
+            elif start_time is not None and on_time(start_time) and instance_state == 'stopped':
+                # Start EC2 instance
+                actions += 1
+                message += ' => Starting'
+                try:
+                    ec2_client.start_instances(InstanceIds=[instance_id])
+                except ec2_client.exceptions.ClientError:
+                    message += ' ... FAILED'
 
-    return messages
+            messages.append(message)
+
+    return actions
+
+
+def proc_eb(messages):
+    actions = 0
+    response = eb_client.describe_environments()
+    for environment in response['Environments']:
+        application_name = environment['ApplicationName']
+        environment_id = environment['EnvironmentId']
+        environment_arn = environment['EnvironmentArn']
+        environment_name = environment['EnvironmentName']
+        settings_response = eb_client.describe_configuration_settings(
+            ApplicationName=application_name, EnvironmentName=environment_name)
+        instance_size = next(map(lambda x: int(x['Value']), filter(
+            lambda x: x['ResourceName'] == 'AWSEBAutoScalingGroup' and x['Namespace'] == 'aws:autoscaling:asg' and
+                      x['OptionName'] == 'MaxSize', settings_response['ConfigurationSettings'][0]['OptionSettings']
+        )), None)
+        resources_response = eb_client.describe_environment_resources(EnvironmentId=environment_id)
+        resources = resources_response['EnvironmentResources']
+        tags_response = eb_client.list_tags_for_resource(ResourceArn=environment_arn)
+        start_time = next(map(
+            lambda x: x['Value'],
+            filter(lambda x: x['Key'] == START_TAG, tags_response['ResourceTags'])
+        ), None)
+        stop_time = next(map(
+            lambda x: x['Value'],
+            filter(lambda x: x['Key'] == STOP_TAG, tags_response['ResourceTags'])
+        ), None)
+        message = f'- EB: {application_name} {environment_id} {environment_name}'
+
+        for load_balancer in resources['LoadBalancers']:
+            load_balancer_name = load_balancer['Name']
+            try:
+                lb_response = elbv2_client.describe_load_balancers(Names=[load_balancer_name])
+                lb_state = lb_response['LoadBalancers'][0]['State']['Code']
+                message += f'\n  - LB: {load_balancer_name} ({lb_state})'
+            except elbv2_client.exceptions.LoadBalancerNotFoundException:
+                # probably Classic Load Balancer
+                message += f'\n  - LB: {load_balancer_name}'
+
+        new_value = None
+        if stop_time is not None and on_time(stop_time) and instance_size > 0:
+            new_value = 0
+            message += ' => Stopping'
+        elif start_time is not None and on_time(start_time) and instance_size == 0:
+            new_value = 1
+            message += ' => Starting'
+        if new_value is not None:
+            actions += 1
+            try:
+                eb_client.update_environment(
+                    EnvironmentId=environment_id,
+                    OptionSettings=[
+                        {
+                            'ResourceName': 'AWSEBAutoScalingGroup',
+                            'Namespace': 'aws:autoscaling:asg',
+                            'OptionName': 'MinSize',
+                            'Value': str(new_value)
+                        },
+                        {
+                            'ResourceName': 'AWSEBAutoScalingGroup',
+                            'Namespace': 'aws:autoscaling:asg',
+                            'OptionName': 'MaxSize',
+                            'Value': str(new_value)
+                        },
+                    ])
+            except eb_client.exceptions.ClientError:
+                message += ' ... FAILED'
+
+        messages.append(message)
+
+    return actions
 
 
 def notify(title, message):
     print(title)
     print(message)
-    if TOPIC_ARN is not None and TOPIC_ARN != 'AutoStopTopic':
-        notify_sns(TOPIC_ARN, title, message)
-    if SLACK_WEBHOOK_URL is not None and SLACK_WEBHOOK_URL != 'SlackWebhookUrl':
+    if len(NOTIFY_TOPIC_ARN) > 0:
+        notify_sns(NOTIFY_TOPIC_ARN, title, message)
+    if len(SLACK_WEBHOOK_URL) > 0:
         notify_slack(SLACK_WEBHOOK_URL, title, message)
 
 
