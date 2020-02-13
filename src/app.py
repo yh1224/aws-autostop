@@ -74,16 +74,16 @@ def proc_rds(messages):
             message += ' => Stopping'
             try:
                 rds_client.stop_db_cluster(DBClusterIdentifier=cluster_identifier)
-            except rds_client.exceptions.ClientError:
-                message += ' ... FAILED'
+            except rds_client.exceptions.ClientError as e:
+                message += ' ... FAILED: ' + str(e)
         elif on_time(START_TAGS, cluster_tags) and status == 'stopped':
             # Start RDS clusters
             actions += 1
             message += ' => Starting'
             try:
                 rds_client.start_db_cluster(DBClusterIdentifier=cluster_identifier)
-            except rds_client.exceptions.ClientError:
-                message += ' ... FAILED'
+            except rds_client.exceptions.ClientError as e:
+                message += ' ... FAILED: ' + str(e)
 
         messages.append(message)
 
@@ -110,16 +110,16 @@ def proc_ec2(messages):
                 message += ' => Stopping'
                 try:
                     ec2_client.stop_instances(InstanceIds=[instance_id])
-                except ec2_client.exceptions.ClientError:
-                    message += ' ... FAILED'
+                except ec2_client.exceptions.ClientError as e:
+                    message += ' ... FAILED: ' + str(e)
             elif on_time(START_TAGS, instance_tags) and instance_state == 'stopped':
                 # Start EC2 instance
                 actions += 1
                 message += ' => Starting'
                 try:
                     ec2_client.start_instances(InstanceIds=[instance_id])
-                except ec2_client.exceptions.ClientError:
-                    message += ' ... FAILED'
+                except ec2_client.exceptions.ClientError as e:
+                    message += ' ... FAILED: ' + str(e)
 
             messages.append(message)
 
@@ -182,8 +182,8 @@ def proc_eb(messages):
                             'Value': str(new_value)
                         },
                     ])
-            except eb_client.exceptions.ClientError:
-                message += ' ... FAILED'
+            except eb_client.exceptions.ClientError as e:
+                message += ' ... FAILED: ' + str(e)
 
         messages.append(message)
 
@@ -214,8 +214,8 @@ def proc_asg(messages):
                     MinSize=new_value,
                     MaxSize=new_value
                 )
-            except eb_client.exceptions.ClientError:
-                message += ' ... FAILED'
+            except eb_client.exceptions.ClientError as e:
+                message += ' ... FAILED: ' + str(e)
 
         messages.append(message)
 
