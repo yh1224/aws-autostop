@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime
 
 import boto3
@@ -14,8 +15,8 @@ ec2_client = boto3.client('ec2')
 elbv2_client = boto3.client('elbv2')
 asg_client = boto3.client('autoscaling')
 
-START_TAG = 'start-at'
-STOP_TAG = 'stop-at'
+START_TAGS = ['auto:start-at', 'Auto:StartAt']
+STOP_TAGS = ['auto:stop-at', 'Auto:StopAt']
 
 
 def lambda_handler(event, context):
@@ -28,19 +29,25 @@ def lambda_handler(event, context):
         notify('AWS AutoStop', '\n'.join(messages))
 
 
-def on_time(conf):
+def on_time(keys, tags):
+    if tags is None:
+        return False
+
     weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
     dt_now = datetime.now()
 
-    if len(conf) > 0:
-        for time in conf.split(','):
+    for tag_value in map(lambda x: x['Value'], filter(lambda x: x['Key'] in keys, tags)):
+        for time in [i for i in re.split(r'[ ,]', tag_value) if i]:
             if ':' in time:
                 (weekday, time) = time.split(':')
                 if weekdays[dt_now.weekday()] != weekday:
                     continue
             if '-' in time:
                 (start, end) = time.split('-')
-                if not (int(start) <= dt_now.hour <= int(end)):
+                try:
+                    if not (int(start) <= dt_now.hour <= int(end)):
+                        continue
+                except ValueError:
                     continue
             elif dt_now.hour != int(time):
                 continue
@@ -58,17 +65,10 @@ def proc_rds(messages):
         cluster_identifier = cluster['DBClusterIdentifier']
         cluster_arn = cluster['DBClusterArn']
         tags_response = rds_client.list_tags_for_resource(ResourceName=cluster_arn)
-        start_time = next(map(
-            lambda x: x['Value'],
-            filter(lambda x: x['Key'] == START_TAG, tags_response['TagList'])
-        ), None)
-        stop_time = next(map(
-            lambda x: x['Value'],
-            filter(lambda x: x['Key'] == STOP_TAG, tags_response['TagList'])
-        ), None)
+        cluster_tags = tags_response['TagList']
         message = f'- RDS: {cluster_identifier} ({status})'
 
-        if stop_time is not None and on_time(stop_time) and status == 'available':
+        if on_time(STOP_TAGS, cluster_tags) and status == 'available':
             # Stop RDS clusters
             actions += 1
             message += ' => Stopping'
@@ -76,7 +76,7 @@ def proc_rds(messages):
                 rds_client.stop_db_cluster(DBClusterIdentifier=cluster_identifier)
             except rds_client.exceptions.ClientError:
                 message += ' ... FAILED'
-        elif start_time is not None and on_time(start_time) and status == 'stopped':
+        elif on_time(START_TAGS, cluster_tags) and status == 'stopped':
             # Start RDS clusters
             actions += 1
             message += ' => Starting'
@@ -102,17 +102,9 @@ def proc_ec2(messages):
                 # Ignore instances for ASG
                 messages.append(f'- EC2: {instance_id} ({instance_state}) for ASG')
                 continue
-            start_time = next(map(
-                lambda x: x['Value'],
-                filter(lambda x: x['Key'] == START_TAG, instance_tags)
-            ), None)
-            stop_time = next(map(
-                lambda x: x['Value'],
-                filter(lambda x: x['Key'] == STOP_TAG, instance_tags)
-            ), None)
             message = f'- EC2: {instance_id} ({instance_state})'
 
-            if stop_time is not None and on_time(stop_time) and instance_state == 'running':
+            if on_time(STOP_TAGS, instance_tags) and instance_state == 'running':
                 # Stop EC2 instance
                 actions += 1
                 message += ' => Stopping'
@@ -120,7 +112,7 @@ def proc_ec2(messages):
                     ec2_client.stop_instances(InstanceIds=[instance_id])
                 except ec2_client.exceptions.ClientError:
                     message += ' ... FAILED'
-            elif start_time is not None and on_time(start_time) and instance_state == 'stopped':
+            elif on_time(START_TAGS, instance_tags) and instance_state == 'stopped':
                 # Start EC2 instance
                 actions += 1
                 message += ' => Starting'
@@ -151,14 +143,7 @@ def proc_eb(messages):
         resources_response = eb_client.describe_environment_resources(EnvironmentId=environment_id)
         resources = resources_response['EnvironmentResources']
         tags_response = eb_client.list_tags_for_resource(ResourceArn=environment_arn)
-        start_time = next(map(
-            lambda x: x['Value'],
-            filter(lambda x: x['Key'] == START_TAG, tags_response['ResourceTags'])
-        ), None)
-        stop_time = next(map(
-            lambda x: x['Value'],
-            filter(lambda x: x['Key'] == STOP_TAG, tags_response['ResourceTags'])
-        ), None)
+        environment_tags = tags_response['ResourceTags']
         message = f'- EB: {application_name} {environment_id} {environment_name}'
 
         for load_balancer in resources['LoadBalancers']:
@@ -172,10 +157,10 @@ def proc_eb(messages):
                 message += f'\n  - LB: {load_balancer_name}'
 
         new_value = None
-        if stop_time is not None and on_time(stop_time) and instance_size > 0:
+        if on_time(STOP_TAGS, environment_tags) and instance_size > 0:
             new_value = 0
             message += ' => Stopping'
-        elif start_time is not None and on_time(start_time) and instance_size == 0:
+        elif on_time(START_TAGS, environment_tags) and instance_size == 0:
             new_value = 1
             message += ' => Starting'
         if new_value is not None:
@@ -212,21 +197,13 @@ def proc_asg(messages):
         asg_name = asg['AutoScalingGroupName']
         instance_size = asg['MaxSize']
         asg_tags = asg['Tags']
-        start_time = next(map(
-            lambda x: x['Value'],
-            filter(lambda x: x['Key'] == START_TAG, asg_tags)
-        ), None)
-        stop_time = next(map(
-            lambda x: x['Value'],
-            filter(lambda x: x['Key'] == STOP_TAG, asg_tags)
-        ), None)
         message = f'- ASG: {asg_name}'
 
         new_value = None
-        if stop_time is not None and on_time(stop_time) and instance_size > 0:
+        if on_time(STOP_TAGS, asg_tags) and instance_size > 0:
             new_value = 0
             message += ' => Stopping'
-        elif start_time is not None and on_time(start_time) and instance_size == 0:
+        elif on_time(START_TAGS, asg_tags) and instance_size == 0:
             new_value = 1
             message += ' => Starting'
         if new_value is not None:
