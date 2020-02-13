@@ -5,9 +5,11 @@ from datetime import datetime
 
 import boto3
 import requests
+from pytz import timezone
 
 NOTIFY_TOPIC_ARN = os.environ['NOTIFY_TOPIC_ARN']
 SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
+TIMEZONE = timezone(os.environ['TIMEZONE'])
 
 rds_client = boto3.client('rds')
 eb_client = boto3.client('elasticbeanstalk')
@@ -34,7 +36,7 @@ def on_time(keys, tags):
         return False
 
     weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-    dt_now = datetime.now()
+    dt_now = datetime.now(TIMEZONE)
 
     for tag_value in map(lambda x: x['Value'], filter(lambda x: x['Key'] in keys, tags)):
         for time in [i for i in re.split(r'[ ,]', tag_value) if i]:

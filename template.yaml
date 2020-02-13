@@ -7,6 +7,9 @@ Globals:
     Timeout: 10
 
 Parameters:
+  TimeZone:
+    Type: String
+    Default: UTC
   SlackWebhookUrl:
     Type: String
 
@@ -59,6 +62,7 @@ Resources:
       Runtime: python3.8
       Environment:
         Variables:
+          TIMEZONE: !Ref TimeZone
           NOTIFY_TOPIC_ARN: !Ref AutoStopTopic
           SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
       Role: !GetAtt AutoStopIamRole.Arn
