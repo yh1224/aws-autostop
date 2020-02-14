@@ -33,20 +33,23 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - "elasticbeanstalk:DescribeEnvironments"
-                  - "elasticbeanstalk:DescribeEnvironmentResources"
-                  - "elasticbeanstalk:ListTagsForResource"
-                  - "elasticbeanstalk:UpdateEnvironment"
+                  - "autoscaling:DescribeAutoScalingGroups"
+                  - "autoscaling:UpdateAutoScalingGroup"
                   - "ec2:DescribeInstances"
                   - "ec2:DescribeInstanceStatus"
                   - "ec2:StartInstances"
                   - "ec2:StopInstances"
-                  - "autoscaling:DescribeAutoScalingGroups"
-                  - "autoscaling:UpdateAutoScalingGroup"
+                  - "elasticbeanstalk:DescribeEnvironments"
+                  - "elasticbeanstalk:DescribeEnvironmentResources"
+                  - "elasticbeanstalk:ListTagsForResource"
+                  - "elasticbeanstalk:UpdateEnvironment"
                   - "rds:DescribeDBClusters"
+                  - "rds:DescribeDBInstances"
                   - "rds:ListTagsForResource"
                   - "rds:StartDBCluster"
+                  - "rds:StartDBInstance"
                   - "rds:StopDBCluster"
+                  - "rds:StopDBInstance"
                 Resource: "*"
               - Effect: Allow
                 Action:

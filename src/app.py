@@ -27,6 +27,7 @@ def lambda_handler(event, context):
     result = proc_asg(messages)
     result += proc_ec2(messages)
     result += proc_rds(messages)
+    print('\n'.join(messages))
     if result > 0:
         notify('AWS AutoStop', '\n'.join(messages))
 
@@ -60,15 +61,53 @@ def on_time(keys, tags):
 
 
 def proc_rds(messages):
+    return proc_rds_clusters(messages) + proc_rds_instances(messages)
+
+
+def proc_rds_instances(messages):
+    actions = 0
+    response = rds_client.describe_db_instances()
+    # print(response)
+    for instance in response['DBInstances']:
+        status = instance['DBInstanceStatus']  # creating, modifying, available, stopping, stopped
+        instance_identifier = instance['DBInstanceIdentifier']
+        instance_arn = instance['DBInstanceArn']
+        tags_response = rds_client.list_tags_for_resource(ResourceName=instance_arn)
+        instance_tags = tags_response['TagList']
+        message = f'- RDS instance: {instance_identifier} ({status})'
+
+        if on_time(STOP_TAGS, instance_tags) and status == 'available':
+            # Stop RDS instances
+            actions += 1
+            message += ' => Stopping'
+            try:
+                rds_client.stop_db_instance(DBInstanceIdentifier=instance_identifier)
+            except rds_client.exceptions.ClientError as e:
+                message += ' ... FAILED: ' + str(e)
+        elif on_time(START_TAGS, instance_tags) and status == 'stopped':
+            # Start RDS instances
+            actions += 1
+            message += ' => Starting'
+            try:
+                rds_client.stop_db_instance(DBInstanceIdentifier=instance_identifier)
+            except rds_client.exceptions.ClientError as e:
+                message += ' ... FAILED: ' + str(e)
+
+        messages.append(message)
+
+    return actions
+
+
+def proc_rds_clusters(messages):
     actions = 0
     response = rds_client.describe_db_clusters()
     for cluster in response['DBClusters']:
-        status = cluster['Status']  # stopped, starting, available, stopping
+        status = cluster['Status']  # starting, available, stopping, stopped
         cluster_identifier = cluster['DBClusterIdentifier']
         cluster_arn = cluster['DBClusterArn']
         tags_response = rds_client.list_tags_for_resource(ResourceName=cluster_arn)
         cluster_tags = tags_response['TagList']
-        message = f'- RDS: {cluster_identifier} ({status})'
+        message = f'- RDS cluster: {cluster_identifier} ({status})'
 
         if on_time(STOP_TAGS, cluster_tags) and status == 'available':
             # Stop RDS clusters
@@ -102,9 +141,9 @@ def proc_ec2(messages):
             instance_tags = instance['Tags']
             if 'aws:autoscaling:groupName' in map(lambda x: x['Key'], instance_tags):
                 # Ignore instances for ASG
-                messages.append(f'- EC2: {instance_id} ({instance_state}) for ASG')
+                messages.append(f'- EC2 instance: {instance_id} ({instance_state}) for ASG')
                 continue
-            message = f'- EC2: {instance_id} ({instance_state})'
+            message = f'- EC2 instance: {instance_id} ({instance_state})'
 
             if on_time(STOP_TAGS, instance_tags) and instance_state == 'running':
                 # Stop EC2 instance
@@ -146,7 +185,7 @@ def proc_eb(messages):
         resources = resources_response['EnvironmentResources']
         tags_response = eb_client.list_tags_for_resource(ResourceArn=environment_arn)
         environment_tags = tags_response['ResourceTags']
-        message = f'- EB: {application_name} {environment_id} {environment_name}'
+        message = f'- EB environment: {application_name} {environment_id} {environment_name}'
 
         for load_balancer in resources['LoadBalancers']:
             load_balancer_name = load_balancer['Name']
@@ -225,8 +264,6 @@ def proc_asg(messages):
 
 
 def notify(title, message):
-    print(title)
-    print(message)
     if len(NOTIFY_TOPIC_ARN) > 0:
         notify_sns(NOTIFY_TOPIC_ARN, title, message)
     if len(SLACK_WEBHOOK_URL) > 0:
