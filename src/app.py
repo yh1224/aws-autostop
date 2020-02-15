@@ -138,7 +138,10 @@ def proc_ec2(messages):
         for instance in reservation['Instances']:
             instance_id = instance['InstanceId']
             instance_state = instance['State']['Name']
-            instance_tags = instance['Tags']
+            if 'Tags' in instance:
+                instance_tags = instance['Tags']
+            else:
+                instance_tags = []
             if 'aws:autoscaling:groupName' in map(lambda x: x['Key'], instance_tags):
                 # Ignore instances for ASG
                 messages.append(f'- EC2 instance: {instance_id} ({instance_state}) for ASG')
