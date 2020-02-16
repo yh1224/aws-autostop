@@ -12,7 +12,6 @@ SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
 TIMEZONE = timezone(os.environ['TIMEZONE'])
 
 rds_client = boto3.client('rds')
-eb_client = boto3.client('elasticbeanstalk')
 ec2_client = boto3.client('ec2')
 elbv2_client = boto3.client('elbv2')
 asg_client = boto3.client('autoscaling')
@@ -23,8 +22,8 @@ STOP_TAGS = ['auto:stop-at', 'Auto:StopAt']
 
 def lambda_handler(event, context):
     messages = []
-    # result = proc_eb(messages)
-    result = proc_asg(messages)
+    result = 0
+    result += proc_asg(messages)
     result += proc_ec2(messages)
     result += proc_rds(messages)
     print('\n'.join(messages))
@@ -170,70 +169,6 @@ def proc_ec2(messages):
     return actions
 
 
-def proc_eb(messages):
-    actions = 0
-    response = eb_client.describe_environments()
-    for environment in response['Environments']:
-        application_name = environment['ApplicationName']
-        environment_id = environment['EnvironmentId']
-        environment_arn = environment['EnvironmentArn']
-        environment_name = environment['EnvironmentName']
-        settings_response = eb_client.describe_configuration_settings(
-            ApplicationName=application_name, EnvironmentName=environment_name)
-        instance_size = next(map(lambda x: int(x['Value']), filter(
-            lambda x: x['ResourceName'] == 'AWSEBAutoScalingGroup' and x['Namespace'] == 'aws:autoscaling:asg' and
-                      x['OptionName'] == 'MaxSize', settings_response['ConfigurationSettings'][0]['OptionSettings']
-        )), None)
-        resources_response = eb_client.describe_environment_resources(EnvironmentId=environment_id)
-        resources = resources_response['EnvironmentResources']
-        tags_response = eb_client.list_tags_for_resource(ResourceArn=environment_arn)
-        environment_tags = tags_response['ResourceTags']
-        message = f'- EB environment: {application_name} {environment_id} {environment_name}'
-
-        for load_balancer in resources['LoadBalancers']:
-            load_balancer_name = load_balancer['Name']
-            try:
-                lb_response = elbv2_client.describe_load_balancers(Names=[load_balancer_name])
-                lb_state = lb_response['LoadBalancers'][0]['State']['Code']
-                message += f'\n  - LB: {load_balancer_name} ({lb_state})'
-            except elbv2_client.exceptions.LoadBalancerNotFoundException:
-                # probably Classic Load Balancer
-                message += f'\n  - LB: {load_balancer_name}'
-
-        new_value = None
-        if on_time(STOP_TAGS, environment_tags) and instance_size > 0:
-            new_value = 0
-            message += ' => Stopping'
-        elif on_time(START_TAGS, environment_tags) and instance_size == 0:
-            new_value = 1
-            message += ' => Starting'
-        if new_value is not None:
-            actions += 1
-            try:
-                eb_client.update_environment(
-                    EnvironmentId=environment_id,
-                    OptionSettings=[
-                        {
-                            'ResourceName': 'AWSEBAutoScalingGroup',
-                            'Namespace': 'aws:autoscaling:asg',
-                            'OptionName': 'MinSize',
-                            'Value': str(new_value)
-                        },
-                        {
-                            'ResourceName': 'AWSEBAutoScalingGroup',
-                            'Namespace': 'aws:autoscaling:asg',
-                            'OptionName': 'MaxSize',
-                            'Value': str(new_value)
-                        },
-                    ])
-            except eb_client.exceptions.ClientError as e:
-                message += ' ... FAILED: ' + str(e)
-
-        messages.append(message)
-
-    return actions
-
-
 def proc_asg(messages):
     actions = 0
     response = asg_client.describe_auto_scaling_groups()
@@ -258,7 +193,7 @@ def proc_asg(messages):
                     MinSize=new_value,
                     MaxSize=new_value
                 )
-            except eb_client.exceptions.ClientError as e:
+            except asg_client.exceptions.ClientError as e:
                 message += ' ... FAILED: ' + str(e)
 
         messages.append(message)
