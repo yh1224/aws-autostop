@@ -36,7 +36,7 @@ Add tags below to resources.
 
 ### Example
 
-|Exmample|Description|
+|Example|Description|
 |:--|:--|
 |`21`|21:00|
 |`0-23`|evenry hours|
