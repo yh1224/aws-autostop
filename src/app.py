@@ -41,16 +41,29 @@ def on_time(keys, tags):
     for tag_value in map(lambda x: x['Value'], filter(lambda x: x['Key'] in keys, tags)):
         for time in [i for i in re.split(r'[ ,]', tag_value) if i]:
             if ':' in time:
-                (weekday, time) = time.split(':')
-                if weekdays[dt_now.weekday()] != weekday:
+                (wd, time) = time.split(':')
+                if '-' in wd:
+                    (wd_start, wd_end) = wd.split('-')
+                    try:
+                        wd_start = weekdays.index(wd_start)
+                        wd_end = weekdays.index(wd_end)
+                    except ValueError:
+                        continue
+                    if wd_end < wd_start:
+                        wd_end += len(weekdays)
+                    if weekdays[dt_now.weekday()] not in (weekdays * 2)[wd_start:(wd_end + 1)]:
+                        continue
+                elif weekdays[dt_now.weekday()] != wd:
                     continue
             if '-' in time:
                 (start, end) = time.split('-')
                 try:
-                    if not (int(start) <= dt_now.hour <= int(end)):
-                        continue
+                    start = int(start)
+                    end = int(end)
                 except ValueError:
-                    continue
+                    return False
+                if not (start <= dt_now.hour <= end):
+                    return False
             elif dt_now.hour != int(time):
                 continue
             # matched
