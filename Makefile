@@ -6,7 +6,7 @@ build:
 	sam build --use-container
 
 env.json: env.json.example
-	if [ ! -e env.json ]; then cp env.json.example env.json; fi
+	test -e env.json || cp env.json.example env.json
 
 .PHONY: local-invoke
 local-invoke: build env.json
