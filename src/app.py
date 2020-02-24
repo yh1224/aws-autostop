@@ -26,7 +26,6 @@ def lambda_handler(event, context):
     result += proc_asg(messages)
     result += proc_ec2(messages)
     result += proc_rds(messages)
-    print('\n'.join(messages))
     if result > 0:
         notify('AWS AutoStop', '\n'.join(messages))
 
@@ -88,9 +87,10 @@ def proc_rds_instances(messages):
         instance_tags = tags_response['TagList']
         message = f'- RDS instance: {instance_identifier} ({status})'
 
+        action = False
         if on_time(STOP_TAGS, instance_tags) and status == 'available':
             # Stop RDS instances
-            actions += 1
+            action = True
             message += ' => Stopping'
             try:
                 rds_client.stop_db_instance(DBInstanceIdentifier=instance_identifier)
@@ -98,14 +98,17 @@ def proc_rds_instances(messages):
                 message += ' ... FAILED: ' + str(e)
         elif on_time(START_TAGS, instance_tags) and status == 'stopped':
             # Start RDS instances
-            actions += 1
+            action = True
             message += ' => Starting'
             try:
                 rds_client.stop_db_instance(DBInstanceIdentifier=instance_identifier)
             except rds_client.exceptions.ClientError as e:
                 message += ' ... FAILED: ' + str(e)
 
-        messages.append(message)
+        print(message)
+        if action:
+            actions += 1
+            messages.append(message)
 
     return actions
 
@@ -121,9 +124,10 @@ def proc_rds_clusters(messages):
         cluster_tags = tags_response['TagList']
         message = f'- RDS cluster: {cluster_identifier} ({status})'
 
+        action = False
         if on_time(STOP_TAGS, cluster_tags) and status == 'available':
             # Stop RDS clusters
-            actions += 1
+            action = True
             message += ' => Stopping'
             try:
                 rds_client.stop_db_cluster(DBClusterIdentifier=cluster_identifier)
@@ -131,14 +135,17 @@ def proc_rds_clusters(messages):
                 message += ' ... FAILED: ' + str(e)
         elif on_time(START_TAGS, cluster_tags) and status == 'stopped':
             # Start RDS clusters
-            actions += 1
+            action = True
             message += ' => Starting'
             try:
                 rds_client.start_db_cluster(DBClusterIdentifier=cluster_identifier)
             except rds_client.exceptions.ClientError as e:
                 message += ' ... FAILED: ' + str(e)
 
-        messages.append(message)
+        print(message)
+        if action:
+            actions += 1
+            messages.append(message)
 
     return actions
 
@@ -156,13 +163,14 @@ def proc_ec2(messages):
                 instance_tags = []
             if 'aws:autoscaling:groupName' in map(lambda x: x['Key'], instance_tags):
                 # Ignore instances for ASG
-                messages.append(f'- EC2 instance: {instance_id} ({instance_state}) for ASG')
+                print(f'- EC2 instance: {instance_id} ({instance_state}) for ASG')
                 continue
             message = f'- EC2 instance: {instance_id} ({instance_state})'
 
+            action = False
             if on_time(STOP_TAGS, instance_tags) and instance_state == 'running':
                 # Stop EC2 instance
-                actions += 1
+                action = True
                 message += ' => Stopping'
                 try:
                     ec2_client.stop_instances(InstanceIds=[instance_id])
@@ -170,14 +178,17 @@ def proc_ec2(messages):
                     message += ' ... FAILED: ' + str(e)
             elif on_time(START_TAGS, instance_tags) and instance_state == 'stopped':
                 # Start EC2 instance
-                actions += 1
+                action = True
                 message += ' => Starting'
                 try:
                     ec2_client.start_instances(InstanceIds=[instance_id])
                 except ec2_client.exceptions.ClientError as e:
                     message += ' ... FAILED: ' + str(e)
 
-            messages.append(message)
+            print(message)
+            if action:
+                actions += 1
+                messages.append(message)
 
     return actions
 
@@ -191,6 +202,7 @@ def proc_asg(messages):
         asg_tags = asg['Tags']
         message = f'- ASG: {asg_name}'
 
+        action = False
         new_value = None
         if on_time(STOP_TAGS, asg_tags) and instance_size > 0:
             new_value = 0
@@ -199,7 +211,7 @@ def proc_asg(messages):
             new_value = 1
             message += ' => Starting'
         if new_value is not None:
-            actions += 1
+            action = True
             try:
                 asg_client.update_auto_scaling_group(
                     AutoScalingGroupName=asg_name,
@@ -209,7 +221,10 @@ def proc_asg(messages):
             except asg_client.exceptions.ClientError as e:
                 message += ' ... FAILED: ' + str(e)
 
-        messages.append(message)
+        print(message)
+        if action:
+            actions += 1
+            messages.append(message)
 
     return actions
 
