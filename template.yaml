@@ -2,16 +2,17 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: AWS AutoStop
 
-Globals:
-  Function:
-    Timeout: 10
-
 Parameters:
   TimeZone:
     Type: String
     Default: UTC
   SlackWebhookUrl:
     Type: String
+
+Globals:
+  Function:
+    Architectures: [ arm64 ]
+    Timeout: 10
 
 Resources:
   AutoStopIamRole:
