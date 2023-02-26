@@ -101,7 +101,7 @@ def proc_rds_instances(messages):
             action = True
             message += ' => Starting'
             try:
-                rds_client.stop_db_instance(DBInstanceIdentifier=instance_identifier)
+                rds_client.start_db_instance(DBInstanceIdentifier=instance_identifier)
             except rds_client.exceptions.ClientError as e:
                 message += ' ... FAILED: ' + str(e)
 
