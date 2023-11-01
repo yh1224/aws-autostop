@@ -11,6 +11,10 @@ Stop/start resources automatically depends on tag.
 
 It might fail to start/stop resources in progress or invalid state.
 
+## Prerequisite
+
+- [AWS SAM CLI](https://docs.aws.amazon.com/ja_jp/serverless-application-model/latest/developerguide/install-sam-cli.html)
+
 ## Deploy
 
 ```shell
