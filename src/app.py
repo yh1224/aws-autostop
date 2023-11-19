@@ -2,14 +2,14 @@ import json
 import os
 import re
 from datetime import datetime
+from urllib import request
+from zoneinfo import ZoneInfo
 
 import boto3
-import requests
-from pytz import timezone
 
 NOTIFY_TOPIC_ARN = os.environ['NOTIFY_TOPIC_ARN']
 SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
-TIMEZONE = timezone(os.environ['TIMEZONE'])
+TIMEZONE = os.environ['TIMEZONE']
 
 rds_client = boto3.client('rds')
 ec2_client = boto3.client('ec2')
@@ -35,7 +35,7 @@ def on_time(keys, tags):
         return False
 
     weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
-    dt_now = datetime.now(TIMEZONE)
+    dt_now = datetime.now(ZoneInfo(TIMEZONE))
 
     for tag_value in map(lambda x: x['Value'], filter(lambda x: x['Key'] in keys, tags)):
         for time in [i for i in re.split(r'[ ,]', tag_value) if i]:
@@ -237,7 +237,7 @@ def notify(title, message):
 
 
 def notify_slack(url, title, message):
-    requests.post(url, data=json.dumps({
+    req = request.Request(url, method='POST', data=json.dumps({
         'attachments': [
             {
                 'color': '#36a64f',
@@ -245,7 +245,8 @@ def notify_slack(url, title, message):
                 'text': message
             }
         ]
-    }))
+    }).encode())
+    request.urlopen(req)
 
 
 def notify_sns(topic, title, message):
