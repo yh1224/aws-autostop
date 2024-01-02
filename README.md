@@ -10,3 +10,21 @@ Stop/start resources automatically depends on tag.
 - RDS cluster/instance
 
 It might fail to start/stop resources in progress or invalid state.
+
+## How to use
+
+Add tags below to resources.
+
+|Key|Format|Description|
+|:--|:--|:--|
+|`Auto:StartAt` or `auto:start-at`|`[<dayOfWeeks>:]<hours>`|Time configuration to start resource|
+|`Auto:StopAt` or `auto:stop-at`|`[<dayOfWeeks>:]<hours>`|Time configuration to stop resource|
+
+### Example
+
+|Example|Description|
+|:--|:--|
+|`21`|21:00|
+|`0-23`|every hours|
+|`sun:0-2`|0:00, 1:00 and 2:00 on sunday|
+|`6 12 18`|6:00, 12:00 and 18:00 everyday|
