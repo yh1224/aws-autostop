@@ -1,14 +1,9 @@
-import { Construct } from "constructs";
-import { App, TerraformStack } from "cdktf";
+import * as cdktf from "cdktf";
+import {AwsAutoStopStack} from "./lib/aws-autostop-stack";
+import {createConfig} from "./lib/config";
 
-class MyStack extends TerraformStack {
-  constructor(scope: Construct, id: string) {
-    super(scope, id);
+const app = new cdktf.App();
+const config = createConfig(process.env.ENV);
 
-    // define resources here
-  }
-}
-
-const app = new App();
-new MyStack(app, "cdktf");
+new AwsAutoStopStack(app, "cdktf", {config});
 app.synth();
