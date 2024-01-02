@@ -11,6 +11,14 @@ Stop/start resources automatically depends on tag.
 
 It might fail to start/stop resources in progress or invalid state.
 
+## Deploy
+
+You will need one of the following tools to deploy
+
+- [AWS SAM CLI](deploy/sam/README.md)
+- [AWS CDK](deploy/cdk/README.md)
+- [CDK for Terraform](deploy/cdktf/README.md)
+
 ## How to use
 
 Add tags below to resources.
