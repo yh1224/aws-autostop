@@ -1,5 +1,1 @@
-.aws-sam
 .idea
-env.json*
-!env.json.example
-samconfig.toml*

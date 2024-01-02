@@ -61,8 +61,8 @@ Resources:
   AutoStopFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/
-      Handler: app.lambda_handler
+      CodeUri: ../../src/lambdas/AutoStopFunction
+      Handler: index.lambda_handler
       Runtime: python3.11
       Environment:
         Variables:
