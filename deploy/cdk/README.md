@@ -1,14 +1,22 @@
-# Welcome to your CDK TypeScript project
+# AWS AutoStop
 
-This is a blank project for CDK development with TypeScript.
+## Prerequisite
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+- [AWS CDK](https://aws.amazon.com/cdk/)
 
-## Useful commands
+## How to deploy
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+1. Create config.yaml and configure
+
+2. Prepare
+
+   ```shell
+   npm install
+   cdk bootstrap
+   ```
+
+3. Deploy stack
+
+   ```shell
+   cdk deploy
+   ```
