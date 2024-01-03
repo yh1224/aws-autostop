@@ -22,6 +22,7 @@
     "typescript": "~5.3.3"
   },
   "dependencies": {
+    "@cdktf/provider-random": "^10.0.1",
     "aws-cdk-lib": "2.117.0",
     "constructs": "^10.0.0",
     "js-yaml": "^4.1.0",
