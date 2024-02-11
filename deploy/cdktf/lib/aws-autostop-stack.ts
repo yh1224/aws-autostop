@@ -115,8 +115,9 @@ export class AwsAutoStopStack extends cdktf.TerraformStack {
         });
         const lambdaArchive = new S3Object(this, "FunctionAsset", {
             bucket: bucket.bucket,
-            key: `${functionAsset.fileName}`,
+            key: functionAsset.assetHash,
             source: functionAsset.path,
+            sourceHash: functionAsset.assetHash,
         });
         const autoStopFunction = new LambdaFunction(this, "AutoStopFunction", {
             architectures: ["arm64"],
