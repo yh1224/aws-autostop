@@ -238,10 +238,10 @@ def notify(title, message):
 
 def notify_slack(url, title, message):
     req = request.Request(url, method='POST', data=json.dumps({
+        'text': title,
         'attachments': [
             {
                 'color': '#36a64f',
-                'pretext': title,
                 'text': message
             }
         ]
