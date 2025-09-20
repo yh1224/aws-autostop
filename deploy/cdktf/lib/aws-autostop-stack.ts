@@ -130,7 +130,7 @@ export class AwsAutoStopStack extends cdktf.TerraformStack {
             },
             functionName: `${config.project}-AutoStopFunction-${uniqueSuffix.hex}`,
             handler: "index.lambda_handler",
-            runtime: "python3.11",
+            runtime: "python3.13",
             role: autoStopRole.arn,
             s3Bucket: bucket.bucket,
             s3Key: lambdaArchive.key,
