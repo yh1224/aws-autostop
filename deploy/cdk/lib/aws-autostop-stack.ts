@@ -73,7 +73,9 @@ export class AwsAutoStopStack extends cdk.Stack {
                 SLACK_WEBHOOK_URL: slackWebhookUrl,
             },
             handler: "lambda_handler",
-            logRetention: logs.RetentionDays.ONE_WEEK,
+            logGroup: new logs.LogGroup(this, "AutoStopFunctionLogGroup", {
+                retention: logs.RetentionDays.ONE_WEEK,
+            }),
             runtime: lambda.Runtime.PYTHON_3_11,
             role: autoStopRole,
             timeout: cdk.Duration.seconds(10),
