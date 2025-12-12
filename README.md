@@ -17,7 +17,6 @@ You will need one of the following tools to deploy
 
 - [AWS SAM CLI](deploy/sam/README.md)
 - [AWS CDK](deploy/cdk/README.md)
-- [CDK for Terraform](deploy/cdktf/README.md)
 
 ## How to use
 
