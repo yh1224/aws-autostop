@@ -76,7 +76,7 @@ export class AwsAutoStopStack extends cdk.Stack {
             logGroup: new logs.LogGroup(this, "AutoStopFunctionLogGroup", {
                 retention: logs.RetentionDays.ONE_WEEK,
             }),
-            runtime: lambda.Runtime.PYTHON_3_13,
+            runtime: lambda.Runtime.PYTHON_3_14,
             role: autoStopRole,
             timeout: cdk.Duration.seconds(10),
         });
