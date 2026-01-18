@@ -63,7 +63,7 @@ Resources:
     Properties:
       CodeUri: ../../src/lambdas/AutoStopFunction
       Handler: index.lambda_handler
-      Runtime: python3.13
+      Runtime: python3.14
       Environment:
         Variables:
           TIMEZONE: !Ref TimeZone
