@@ -1,10 +1,10 @@
 import * as cdk from "aws-cdk-lib";
-import * as events from "aws-cdk-lib/aws-events";
-import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambda_python from "@aws-cdk/aws-lambda-python-alpha";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as scheduler from "aws-cdk-lib/aws-scheduler";
+import * as scheduler_targets from "aws-cdk-lib/aws-scheduler-targets";
 import * as sns from "aws-cdk-lib/aws-sns";
 import {Construct} from "constructs";
 import {Config} from "./config";
@@ -80,9 +80,10 @@ export class AwsAutoStopStack extends cdk.Stack {
             role: autoStopRole,
             timeout: cdk.Duration.seconds(10),
         });
-        new events.Rule(this, "AutoStopRule", {
-            schedule: events.Schedule.cron({minute: "0"}), // every hour
-            targets: [new events_targets.LambdaFunction(autoStopFunction)],
+        // run every hour
+        new scheduler.Schedule(this, "Schedule", {
+            schedule: scheduler.ScheduleExpression.cron({minute: "0", timeZone: cdk.TimeZone.of(timezone)}),
+            target: new scheduler_targets.LambdaInvoke(autoStopFunction),
         });
     }
 }
